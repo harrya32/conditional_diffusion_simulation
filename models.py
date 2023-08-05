@@ -86,6 +86,44 @@ class ScoreNet_BOD(nn.Module):
         out = out / norm
         return out
     
+class cde_ScoreNet_BOD(nn.Module):
+    
+    def __init__(self, marginal_prob_std):
+        super().__init__()
+        self.marginal_prob_std = marginal_prob_std
+        
+        self.net = MLP(3 * 32,
+                       layer_widths=[128,128] + [2],
+                       activate_final = False,
+                       activation_fn=torch.nn.LeakyReLU())
+
+        self.t_encoder = MLP(16,
+                             layer_widths=[16] + [32],
+                             activate_final = True,
+                             activation_fn=torch.nn.LeakyReLU())
+
+        self.xy_encoder = MLP(2 + 5,
+                              layer_widths=[32] + [64],
+                              activate_final = True,
+                              activation_fn=torch.nn.LeakyReLU())
+        
+    def forward(self, x):
+        t = x[:, -1]
+        norm = self.marginal_prob_std(t)[:, None]
+        t = t.reshape(-1,1)
+        xy = x[:,[0,1,2,3,4,5,6]]
+        
+        t_emb = get_timestep_embedding(t, 16, 10000)
+        t_emb = self.t_encoder(t_emb)
+        xy_emb = self.xy_encoder(xy)
+
+        
+        h = torch.cat([xy_emb, t_emb], -1)
+
+        out = self.net(h) 
+
+        out = out / norm
+        return out
     
 def get_timestep_embedding(timesteps, embedding_dim=128, max_period=10000):
     """
@@ -132,33 +170,15 @@ class MLP(torch.nn.Module):
     
 
 
-def loss_fn(model, x, marginal_prob_std, eps=1e-5):
-    """The loss function for training score-based generative models.
-
-    Args:
-    model: A PyTorch model instance that represents a 
-      time-dependent score-based model.
-    x: A mini-batch of training data.    
-    marginal_prob_std: A function that gives the standard deviation of 
-      the perturbation kernel.
-    eps: A tolerance value for numerical stability.
-    """
-    random_t = torch.rand(x.shape[0]) * (1. - eps) + eps  
-    std = marginal_prob_std(random_t)
-    random_t = torch.reshape(random_t, (x.shape[0], 1))
-    z = torch.randn_like(x)
-    perturbed_x = x + z * std[:, None]
-    x_with_t = torch.hstack([perturbed_x,random_t])
-    x_with_t = x_with_t.to(torch.float32)
-    score = model(x_with_t)
-    loss = torch.mean(torch.sum((score * std[:, None] + z)**2, dim=0))
-    return loss
 
 
 ##############
 ##############
 ##############
 
+
+    
+    
 class ScoreNet_old(nn.Module):
     
     def __init__(self, marginal_prob_std):
