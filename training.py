@@ -57,6 +57,32 @@ def CDE_loss_fn_BOD(model, x, marginal_prob_std, eps=1e-5):
     loss = torch.mean(torch.sum((score * std[:, None] + z)**2, dim=0))
     return loss
 
+def CDE_loss_fn_2D(model, x, marginal_prob_std, eps=1e-5):
+    """The loss function for training score-based generative models.
+
+    Args:
+    model: A PyTorch model instance that represents a 
+      time-dependent score-based model.
+    x: A mini-batch of training data.    
+    marginal_prob_std: A function that gives the standard deviation of 
+      the perturbation kernel.
+    eps: A tolerance value for numerical stability.
+    """
+    y = torch.reshape(x[:,1], (x.shape[0], 1))
+    random_t = torch.rand(x.shape[0], device='cpu') * (1. - eps) + eps  
+    std = marginal_prob_std(random_t)
+    random_t = torch.reshape(random_t, (x.shape[0], 1))
+    z = torch.randn_like(x)
+    perturbed_x = x + z * std[:, None]
+    perturbed_x = torch.hstack([perturbed_x,y])
+    perturbed_x = perturbed_x[:, [0,2]]
+    
+    x_with_t = torch.hstack([perturbed_x,random_t])
+    x_with_t = x_with_t.to(torch.float32)
+    score = model(x_with_t)
+    loss = torch.mean(torch.sum((score * std[:, None] + z)**2, dim=0))
+    return loss
+
 
 def train_model(score_model, data, loss_fn, marginal_prob_std_fn, file, epochs = 100, batch_size = 32, lr = 1e-4):
     
