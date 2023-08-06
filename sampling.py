@@ -611,7 +611,7 @@ def CDiffE_pc_sampler_BOD(score_model,
                batch_size=2048, 
                num_steps=1000, 
                snr=signal_to_noise_ratio,
-               eps=1e-3):
+               eps=1e-5):
     """Generate samples from score-based models with Predictor-Corrector method.
 
     Args:
