@@ -463,7 +463,7 @@ def pc_sampler_BOD(score_model,
                batch_size=10000, 
                num_steps=1000, 
                snr=signal_to_noise_ratio,
-               eps=1e-3):
+               eps=1e-5):
     """Generate samples from score-based models with Predictor-Corrector method.
 
     Args:
@@ -512,7 +512,7 @@ def Euler_Maruyama_sampler_BOD(score_model,
                            diffusion_coeff, 
                            batch_size=10000, 
                            num_steps=1000, 
-                           eps=1e-3):
+                           eps=1e-5):
     """Generate samples from score-based models with the Euler-Maruyama solver.
 
     Args:
@@ -570,7 +570,7 @@ def CDiffE_Euler_Maruyama_sampler_BOD(score_model,
                            y_obs,
                            batch_size=10000, 
                            num_steps=1000, 
-                           eps=1e-3):
+                           eps=1e-5):
     """Generate samples from score-based models with the Euler-Maruyama solver.
 
     Args:
