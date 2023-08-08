@@ -275,6 +275,18 @@ def get_diffused_y_2D(y_obs, timesteps, marginal_prob_std):
     diffused_y = y_obs + torch.randn(timesteps.shape[0], 1) * sd
     return diffused_y
 
+def get_diffused_2D(data, n, diffusion_coeff):
+    data = data.item()
+    t = 0
+    dt = 1/n
+    diffused = [data]
+    for i in range(n):
+        g = diffusion_coeff(t).item()
+        data += g * np.random.randn(1)[0] * np.sqrt(dt)
+        t += dt
+        diffused.append(data)
+        
+    return torch.tensor(diffused, dtype = torch.float32)[:,None]
 
 def CDiffE_Euler_Maruyama_sampler_2D(score_model, 
                            marginal_prob_std,
@@ -289,8 +301,9 @@ def CDiffE_Euler_Maruyama_sampler_2D(score_model,
     time_steps = torch.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
     x = init_x
-    diffused_y = [i.repeat(batch_size).reshape(batch_size,1) for i in get_diffused_y_2D(y_obs, time_steps, marginal_prob_std)]
-    
+    diff = get_diffused_2D(y_obs, num_steps, diffusion_coeff)
+    #diffused_y = [i.repeat(batch_size).reshape(batch_size,1) for i in get_diffused_y_2D(y_obs, time_steps, marginal_prob_std)]
+    diffused_y = [i.repeat(batch_size).reshape(batch_size,1) for i in diff]
     with torch.no_grad():
         for idx, time_step in enumerate(notebook.tqdm(time_steps)):
             
@@ -321,7 +334,10 @@ def CDiffE_pc_sampler_2D(score_model,
     time_steps = torch.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
     x = init_x
-    diffused_y = [i.repeat(batch_size).reshape(batch_size,1) for i in get_diffused_y_2D(y_obs, time_steps, marginal_prob_std)]
+    diff = get_diffused_2D(y_obs, num_steps, diffusion_coeff)
+    #diffused_y = [i.repeat(batch_size).reshape(batch_size,1) for i in get_diffused_y_2D(y_obs, time_steps, marginal_prob_std)]
+    diffused_y = [i.repeat(batch_size).reshape(batch_size,1) for i in diff]
+    
     
     with torch.no_grad():
         for idx, time_step in enumerate(notebook.tqdm(time_steps)):
@@ -407,8 +423,9 @@ def SMCDiff_pc_sampler_2D(score_model, marginal_prob_std, diffusion_coeff, y_obs
     xs = []
     init_x = torch.randn(k, 2) * marginal_prob_std(t)[:, None]
     xs.append(init_x)
-    diffused_y = [i.repeat(k).reshape(k,1) for i in get_diffused_y_2D(y_obs, time_steps, marginal_prob_std)]
-    
+    #diffused_y = [i.repeat(k).reshape(k,1) for i in get_diffused_y_2D(y_obs, time_steps, marginal_prob_std)]
+    diff = get_diffused_2D(y_obs, num_steps, diffusion_coeff)
+    diffused_y = [i.repeat(k).reshape(k,1) for i in diff]
     with torch.no_grad():
         for idx, time_step in enumerate(notebook.tqdm(time_steps)):
             idx = num_steps - idx - 1
@@ -563,6 +580,19 @@ def get_diffused_y(y_obs, timesteps, marginal_prob_std):
     diffused_y = y_obs + torch.randn(timesteps.shape[0], y_obs.shape[0]) * sd
     return diffused_y
 
+def get_diffused_BOD(obs, n, diffusion_coeff):
+    data = obs.clone().detach()
+    t = 0
+    dt = 1/n
+    diffused = [data.clone().detach()]
+    for i in range(n):
+        g = diffusion_coeff(t).reshape(1)
+        data += g * torch.randn(5) * np.sqrt(dt)
+        t += dt
+        diffused.append(data.clone().detach())
+        
+    return torch.vstack(diffused)
+
 
 def CDiffE_Euler_Maruyama_sampler_BOD(score_model, 
                            marginal_prob_std,
@@ -591,7 +621,9 @@ def CDiffE_Euler_Maruyama_sampler_BOD(score_model,
     x = torch.randn(batch_size, 7) * marginal_prob_std(t)[:, None]
     time_steps = torch.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
-    diffused_y = [i.repeat(batch_size).reshape(batch_size,5) for i in get_diffused_y(y_obs, time_steps, marginal_prob_std)]
+    diff = get_diffused_BOD(y_obs, num_steps, diffusion_coeff)
+    #diffused_y = [i.repeat(batch_size).reshape(batch_size,5) for i in get_diffused_y(y_obs, time_steps, marginal_prob_std)]
+    diffused_y = [i.repeat(batch_size).reshape(batch_size,5) for i in diff]
     with torch.no_grad():
         for idx, time_step in enumerate(notebook.tqdm(time_steps)):
             idx = num_steps - idx - 1
@@ -633,7 +665,9 @@ def CDiffE_pc_sampler_BOD(score_model,
     time_steps = torch.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
     x = init_x
-    diffused_y = [i.repeat(batch_size).reshape(batch_size,5) for i in get_diffused_y(y_obs, time_steps, marginal_prob_std)]
+    diff = get_diffused_BOD(y_obs, num_steps, diffusion_coeff)
+    #diffused_y = [i.repeat(batch_size).reshape(batch_size,5) for i in get_diffused_y(y_obs, time_steps, marginal_prob_std)]
+    diffused_y = [i.repeat(batch_size).reshape(batch_size,5) for i in diff]
     with torch.no_grad(): 
         for idx, time_step in enumerate(notebook.tqdm(time_steps)):
             idx = num_steps - idx - 1
@@ -755,7 +789,9 @@ def SMCDiff_pc_sampler_BOD(score_model, marginal_prob_std, diffusion_coeff, y_ob
     xs = []
     init_x = torch.randn(k, 7) * marginal_prob_std(t)[:, None]
     xs.append(init_x)
-    diffused_y = [i.repeat(k).reshape(k,5) for i in get_diffused_y(y_obs, time_steps, marginal_prob_std)]
+    diff = get_diffused_BOD(y_obs, num_steps, diffusion_coeff)
+    #diffused_y = [i.repeat(k).reshape(k,5) for i in get_diffused_y(y_obs, time_steps, marginal_prob_std)]
+    diffused_y = [i.repeat(k).reshape(k,5) for i in diff]
     
     with torch.no_grad():
         for idx, time_step in enumerate(notebook.tqdm(time_steps)):
