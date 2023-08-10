@@ -10,16 +10,7 @@ from tqdm import notebook
 
 
 def loss_fn(model, x, marginal_prob_std, eps=1e-5):
-    """The loss function for training score-based generative models.
 
-    Args:
-    model: A PyTorch model instance that represents a 
-      time-dependent score-based model.
-    x: A mini-batch of training data.    
-    marginal_prob_std: A function that gives the standard deviation of 
-      the perturbation kernel.
-    eps: A tolerance value for numerical stability.
-    """
     random_t = torch.rand(x.shape[0]) * (1. - eps) + eps  
     std = marginal_prob_std(random_t)
     random_t = torch.reshape(random_t, (x.shape[0], 1))
@@ -30,22 +21,13 @@ def loss_fn(model, x, marginal_prob_std, eps=1e-5):
     score = model(x_with_t)
     loss = torch.mean(torch.sum((score * std[:, None] + z)**2, dim=0))
     
-    losses = torch.square(score * std[:, None] + z)
-    losses = torch.mean(losses.reshape(losses.shape[0], -1), dim=-1)
-    loss = torch.mean(losses)
+    #losses = torch.square(score * std[:, None] + z)
+    #losses = torch.mean(losses.reshape(losses.shape[0], -1), dim=-1)
+    #loss = torch.mean(losses)
     return loss
 
 def CDE_loss_fn_BOD(model, x, marginal_prob_std, eps=1e-5):
-    """The loss function for training score-based generative models.
 
-    Args:
-    model: A PyTorch model instance that represents a 
-      time-dependent score-based model.
-    x: A mini-batch of training data.    
-    marginal_prob_std: A function that gives the standard deviation of 
-      the perturbation kernel.
-    eps: A tolerance value for numerical stability.
-    """
     y = x[:,[2,3,4,5,6]]
     x = x[:,[0,1]]
     random_t = torch.rand(x.shape[0]) * (1. - eps) + eps  
@@ -60,22 +42,13 @@ def CDE_loss_fn_BOD(model, x, marginal_prob_std, eps=1e-5):
     score = model(x_with_t)
     loss = torch.mean(torch.sum((score * std[:, None] + z)**2, dim=0))
     
-    losses = torch.square(score * std[:, None] + z)
-    losses = torch.mean(losses.reshape(losses.shape[0], -1), dim=-1)
-    loss = torch.mean(losses)
+    #losses = torch.square(score * std[:, None] + z)
+    #losses = torch.mean(losses.reshape(losses.shape[0], -1), dim=-1)
+    #loss = torch.mean(losses)
     return loss
 
 def CDE_loss_fn_2D(model, x, marginal_prob_std, eps=1e-5):
-    """The loss function for training score-based generative models.
 
-    Args:
-    model: A PyTorch model instance that represents a 
-      time-dependent score-based model.
-    x: A mini-batch of training data.    
-    marginal_prob_std: A function that gives the standard deviation of 
-      the perturbation kernel.
-    eps: A tolerance value for numerical stability.
-    """
     y = torch.reshape(x[:,1], (x.shape[0], 1))
     random_t = torch.rand(x.shape[0], device='cpu') * (1. - eps) + eps  
     std = marginal_prob_std(random_t)

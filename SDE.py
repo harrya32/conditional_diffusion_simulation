@@ -38,6 +38,6 @@ sigma_max_2D = 8
 marginal_prob_std_fn_2D = functools.partial(marginal_prob_std, sigma_min=sigma_min, sigma_max = sigma_max_2D)
 diffusion_coeff_fn_2D = functools.partial(diffusion_coeff, sigma_min=sigma_min, sigma_max = sigma_max_2D)
 
-sigma_max_BOD = 1
+sigma_max_BOD = 2
 marginal_prob_std_fn_BOD = functools.partial(marginal_prob_std, sigma_min=sigma_min, sigma_max = sigma_max_BOD)
 diffusion_coeff_fn_BOD = functools.partial(diffusion_coeff, sigma_min=sigma_min, sigma_max = sigma_max_BOD)
