@@ -275,7 +275,7 @@ def get_diffused_y_2D(y_obs, timesteps, marginal_prob_std):
     diffused_y = y_obs + torch.randn(timesteps.shape[0], 1) * sd
     return diffused_y
 
-def get_diffused_2D(data, n, diffusion_coeff):
+def get_diffused_2D_old(data, n, diffusion_coeff):
     data = data.item()
     t = 0
     dt = 1/n
@@ -289,7 +289,7 @@ def get_diffused_2D(data, n, diffusion_coeff):
     return torch.tensor(diffused, dtype = torch.float32)[:,None]
 
 sigma_min=0.01
-sigma_max=8
+sigma_max=1
 
 def sde_VE(x, t):
     sigma = sigma_min * (sigma_max / sigma_min) ** t
@@ -345,6 +345,7 @@ def CDiffE_Euler_Maruyama_sampler_2D(score_model,
             x = mean_x + torch.sqrt(step_size) * g[:, None] * torch.randn_like(x) 
 
     return mean_x
+
 
 
 def CDiffE_pc_sampler_2D(score_model, 
@@ -667,7 +668,7 @@ def get_diffused_y(y_obs, timesteps, marginal_prob_std):
     diffused_y = y_obs + torch.randn(timesteps.shape[0], y_obs.shape[0]) * sd
     return diffused_y
 
-def get_diffused_BOD(obs, n, diffusion_coeff):
+def get_diffused_BOD_old(obs, n, diffusion_coeff):
     data = obs.clone().detach()
     t = 0
     dt = 1/n
@@ -678,6 +679,20 @@ def get_diffused_BOD(obs, n, diffusion_coeff):
         t += dt
         diffused.append(data.clone().detach())
         
+    return torch.vstack(diffused)
+
+def get_diffused_BOD(obs, n, sde):
+    data = obs.clone().detach()
+    t = 1e-5
+    dt = 1/n
+    diffused = [data.clone().detach()]
+    for i in range(n):
+        drift, diffusion = sde(data, t)
+        data += drift * dt
+        data += diffusion * torch.randn(5) * np.sqrt(dt)
+        diffused.append(data.clone().detach())
+        t += dt
+
     return torch.vstack(diffused)
 
 
@@ -708,9 +723,9 @@ def CDiffE_Euler_Maruyama_sampler_BOD(score_model,
     x = torch.randn(batch_size, 7) * marginal_prob_std(t)[:, None]
     time_steps = torch.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
-    diff = get_diffused_BOD(y_obs, num_steps, diffusion_coeff)
-    #diffused_y = [i.repeat(batch_size).reshape(batch_size,5) for i in get_diffused_y(y_obs, time_steps, marginal_prob_std)]
-    diffused_y = [i.repeat(batch_size).reshape(batch_size,5) for i in diff]
+    #diff = get_diffused_BOD(y_obs, num_steps, diffusion_coeff)
+    #diffused_y = [i.repeat(batch_size).reshape(batch_size,5) for i in diff]
+    diffused_y = [i.repeat(batch_size).reshape(batch_size,5) for i in get_diffused_BOD(y_obs, num_steps, sde_VE)]
     with torch.no_grad():
         for idx, time_step in enumerate(notebook.tqdm(time_steps)):
             idx = num_steps - idx - 1
@@ -776,6 +791,47 @@ def CDiffE_pc_sampler_BOD(score_model,
             x = mu + sd * torch.randn_like(x) 
             
     return mu
+
+def CDE_Euler_Maruyama_sampler_BOD(score_model, 
+               marginal_prob_std,
+               diffusion_coeff,
+               y_obs,
+               batch_size=2048, 
+               num_steps=1000, 
+               snr=signal_to_noise_ratio,
+               eps=1e-5):
+    """Generate samples from score-based models with Predictor-Corrector method.
+
+    Args:
+    score_model: A PyTorch model that represents the time-dependent score-based model.
+    marginal_prob_std: A function that gives the standard deviation
+      of the perturbation kernel.
+    diffusion_coeff: A function that gives the diffusion coefficient 
+      of the SDE.
+    batch_size: The number of samplers to generate by calling this function once.
+    num_steps: The number of sampling steps. 
+      Equivalent to the number of discretized time steps.    
+    device: 'cuda' for running on GPUs, and 'cpu' for running on CPUs.
+    eps: The smallest time step for numerical stability.
+
+    Returns: 
+    Samples.
+    """
+    t = torch.ones(batch_size)
+    init_x = torch.randn(batch_size, 2) * marginal_prob_std(t)[:, None]
+    time_steps = np.linspace(1., eps, num_steps)
+    step_size = time_steps[0] - time_steps[1]
+    y_obs = y_obs.repeat(batch_size)
+    y_obs = y_obs.reshape(batch_size,5)
+    x = torch.hstack([init_x, y_obs])
+
+    with torch.no_grad():
+        for time_step in notebook.tqdm(time_steps):
+            
+            # Predictor step
+            x = cde_get_next_x(x, y_obs, batch_size, score_model, diffusion_coeff, time_step, torch.tensor(step_size))
+            
+    return x
 
 def CDE_pc_sampler_BOD(score_model, 
                marginal_prob_std,
@@ -851,6 +907,67 @@ def log_normal_density(sample, mean, sd):
     sd = sd[0]
     cov = sd * torch.eye(sample.shape[0])
     return MultivariateNormal(loc=mean, covariance_matrix=cov).log_prob(sample)
+
+def SMCDiff_Euler_Maruyama_sampler_BOD(score_model, marginal_prob_std, diffusion_coeff, y_obs, k, 
+                                   num_steps=1000, eps=1e-5, snr = signal_to_noise_ratio):
+    """Generate samples from score-based models with the Euler-Maruyama solver.
+
+    Args:
+    score_model: A PyTorch model that represents the time-dependent score-based model.
+    marginal_prob_std: A function that gives the standard deviation of the perturbation kernel.
+    diffusion_coeff: A function that gives the diffusion coefficient of the SDE.
+    y_obs: A tensor of the conditional y information
+    k: The number of particles used in particle filtering
+    batch_size: The number of samples to generate by calling this function once.
+    num_steps: The number of sampling steps. Equivalent to the number of discretized time steps.
+    eps: The smallest time step for numerical stability.
+
+    Returns:
+    Samples.    
+    """
+    t = torch.ones(k)
+    time_steps = torch.linspace(1., eps, num_steps)
+    step_size = time_steps[0] - time_steps[1]
+    weights = np.ones(k)
+    xs = []
+    init_x = torch.randn(k, 7) * marginal_prob_std(t)[:, None]
+    xs.append(init_x)
+    #diff = get_diffused_BOD(y_obs, num_steps, diffusion_coeff)
+    #diffused_y = [i.repeat(k).reshape(k,5) for i in diff]
+    diffused_y = [i.repeat(k).reshape(k,5) for i in get_diffused_BOD(y_obs, num_steps, sde_VE)]
+    
+    with torch.no_grad():
+        for idx, time_step in enumerate(notebook.tqdm(time_steps)):
+            idx = num_steps - idx - 1
+            batch_time_step = torch.ones(k) * time_step
+            y_obs_t = diffused_y[idx]
+            x = xs[-1]
+            x = torch.hstack([x,y_obs_t])[:, [0,1,7,8,9,10,11]]
+            
+            
+            #get predicted y_{t-1}
+            if (idx - 1) >= 0:
+                y_update_mean, sd = get_next_x(x, k, score_model, diffusion_coeff, time_step, step_size)
+                y_update_mean = y_update_mean[:,[2,3,4,5,6]]
+                y_update_actual = diffused_y[idx-1]
+
+                # compute un-normalized weighting factor for importance resampling step
+                log_w = log_normal_density(y_update_actual, y_update_mean, sd)
+                log_w -= torch.logsumexp(log_w, 0)
+
+                # Update Self-normalized importance weights
+                weights = torch.exp(log_w).cpu().detach().numpy()
+                weights /= sum(weights) # Re-normalize
+                
+                resample_index = systematic(weights, k)
+                x = x[resample_index]
+                weights = np.ones_like(weights)
+            
+            mu, sd = get_next_x(x, k, score_model, diffusion_coeff, time_step, step_size)
+            x_t_1 = mu + sd * torch.randn_like(x) 
+            xs.append(x_t_1)
+
+    return xs[-1]
 
 def SMCDiff_pc_sampler_BOD(score_model, marginal_prob_std, diffusion_coeff, y_obs, k, 
                                    num_steps=1000, eps=1e-5, snr = signal_to_noise_ratio):
