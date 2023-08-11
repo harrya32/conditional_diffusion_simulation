@@ -228,7 +228,7 @@ def get_diffused_2D_old(data, n, diffusion_coeff):
 
 sigma_min=0.01
 sigma_max_2D=8
-sigma_max_BOD=2
+sigma_max_BOD=13
 
 def sde_VE(x, t, sigma_min, sigma_max):
     sigma = sigma_min * (sigma_max / sigma_min) ** t
@@ -528,10 +528,10 @@ def Euler_Maruyama_sampler_BOD(score_model,
     x = init_x
     with torch.no_grad():
         for time_step in notebook.tqdm(time_steps):
-            batch_time_step = torch.ones(batch_size) * time_step
-            batch_time_step_ = torch.reshape(batch_time_step, (x.shape[0], 1))
+
             mu, sd = get_next_x(x, batch_size, score_model, diffusion_coeff, time_step, step_size)
             x = mu + sd * torch.randn_like(x) 
+
 
     return mu
 
@@ -589,7 +589,7 @@ def CDiffE_Euler_Maruyama_sampler_BOD(score_model,
                            y_obs,
                            batch_size=10000, 
                            num_steps=1000, 
-                           eps=1e-5, sigma_min=sigma_min, sigma_max=sigma_max_2D):
+                           eps=1e-5, sigma_min=sigma_min, sigma_max=sigma_max_BOD):
 
     t = torch.ones(batch_size)
     x = torch.randn(batch_size, 7) * marginal_prob_std(t)[:, None]
@@ -619,7 +619,7 @@ def CDiffE_pc_sampler_BOD(score_model,
                batch_size=2048, 
                num_steps=1000, 
                snr=signal_to_noise_ratio,
-               eps=1e-5, sigma_min=sigma_min, sigma_max=sigma_max_2D):
+               eps=1e-5, sigma_min=sigma_min, sigma_max=sigma_max_BOD):
 
     t = torch.ones(batch_size)
     init_x = torch.randn(batch_size, 7) * marginal_prob_std(t)[:, None]
@@ -656,7 +656,6 @@ def CDE_Euler_Maruyama_sampler_BOD(score_model,
                y_obs,
                batch_size=2048, 
                num_steps=1000, 
-               snr=signal_to_noise_ratio,
                eps=1e-5):
 
     t = torch.ones(batch_size)
