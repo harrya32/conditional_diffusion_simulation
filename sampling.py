@@ -514,6 +514,32 @@ def pc_sampler_BOD(score_model,
     return mu
 
 
+
+
+def Euler_Maruyama_sampler_2D(score_model, 
+                           marginal_prob_std,
+                           diffusion_coeff, 
+                           batch_size=1000, 
+                           num_steps=1000, 
+                           device='cpu', 
+                           eps=1e-3):
+
+    t = torch.ones(batch_size, device=device)
+    init_x = torch.randn(batch_size, 2, device=device) * marginal_prob_std(t)[:, None]
+    time_steps = torch.linspace(1., eps, num_steps, device=device)
+    step_size = time_steps[0] - time_steps[1]
+    x = init_x
+    with torch.no_grad():
+        for time_step in notebook.tqdm(time_steps):      
+            batch_time_step = torch.ones(batch_size, device=device) * time_step
+            g = diffusion_coeff(batch_time_step)
+            batch_time_step = torch.reshape(batch_time_step, (x.shape[0], 1))
+            x_with_t = torch.hstack([x, batch_time_step])
+            mean_x = x + (g**2)[:, None] * score_model(x_with_t) * step_size
+            x = mean_x + torch.sqrt(step_size) * g[:, None] * torch.randn_like(x)      
+
+    return mean_x
+
 def Euler_Maruyama_sampler_BOD(score_model, 
                            marginal_prob_std,
                            diffusion_coeff, 
@@ -528,7 +554,16 @@ def Euler_Maruyama_sampler_BOD(score_model,
     x = init_x
     with torch.no_grad():
         for time_step in notebook.tqdm(time_steps):
+            
+            batch_time_step = torch.ones(batch_size) * time_step
+            g = diffusion_coeff(batch_time_step)
+            batch_time_step_ = torch.reshape(batch_time_step, (x.shape[0], 1))
+            x_with_t = torch.hstack([x, batch_time_step_])
 
+            score = score_model(x_with_t)
+            mean_x = x + (g**2)[:, None] * score * step_size
+            sd = torch.sqrt(step_size) * g[:, None]
+            
             mu, sd = get_next_x(x, batch_size, score_model, diffusion_coeff, time_step, step_size)
             x = mu + sd * torch.randn_like(x) 
 

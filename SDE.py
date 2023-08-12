@@ -28,8 +28,8 @@ def diffusion_coeff(t, sigma_min, sigma_max):
     Returns:
     The vector of diffusion coefficients.
     """
-    sigma = sigma_min * (sigma_max_2D / sigma_min) ** t
-    diffusion = sigma * torch.sqrt(torch.tensor(2 * (np.log(sigma_max_2D) - np.log(sigma_min))))
+    sigma = sigma_min * (sigma_max / sigma_min) ** t
+    diffusion = sigma * torch.sqrt(torch.tensor(2 * (np.log(sigma_max) - np.log(sigma_min))))
     #torch.tensor(sigma**t)
     return diffusion
   
