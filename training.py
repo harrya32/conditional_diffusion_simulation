@@ -49,18 +49,19 @@ def CDE_loss_fn_BOD(model, x, marginal_prob_std, eps=1e-5):
 
 def CDE_loss_fn_2D(model, x, marginal_prob_std, eps=1e-5):
 
-    y = torch.reshape(x[:,1], (x.shape[0], 1))
+    y = x[:,[1]]
+    x = x[:,[0]]
+    x = x.to(torch.float32)
+    y = y.to(torch.float32)
+    
     random_t = torch.rand(x.shape[0], device='cpu') * (1. - eps) + eps  
+    random_t = random_t.to(torch.float32)
     std = marginal_prob_std(random_t)
-    random_t = torch.reshape(random_t, (x.shape[0], 1))
+    random_t = random_t[:,None]
     z = torch.randn_like(x)
     perturbed_x = x + z * std[:, None]
-    perturbed_x = torch.hstack([perturbed_x,y])
-    perturbed_x = perturbed_x[:, [0,2]]
-    
-    x_with_t = torch.hstack([perturbed_x,random_t])
-    x_with_t = x_with_t.to(torch.float32)
-    score = model(x_with_t)
+
+    score = model(perturbed_x, y, random_t)
     loss = torch.mean(torch.sum((score * std[:, None] + z)**2, dim=0))
     return loss
 

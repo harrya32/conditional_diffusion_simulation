@@ -140,71 +140,56 @@ def CDE_Euler_Maruyama_sampler_2D(score_model,
                            eps=1e-3):
 
     t = torch.ones(batch_size)
-    init_x = torch.randn(batch_size, 1) * marginal_prob_std(t)[:, None]
+    x = torch.randn(batch_size, 1) * marginal_prob_std(t)[:, None]
     time_steps = torch.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
-    x = init_x
     y_obs = y_obs.repeat(batch_size)
     y_obs = y_obs.reshape(batch_size,1)
-    x = torch.hstack([init_x, y_obs])
+
     with torch.no_grad():
         for time_step in notebook.tqdm(time_steps): 
 
             batch_time_step = torch.ones(batch_size) * time_step
-            g = diffusion_coeff(batch_time_step)
-            batch_time_step_ = torch.reshape(batch_time_step, (x.shape[0], 1))
-            x_with_t = torch.hstack([x, batch_time_step_])
-            mean_x = x + (g**2)[:, None] * score_model(x_with_t) * step_size
-            x = mean_x + torch.sqrt(step_size) * g[:, None] * torch.randn_like(x) 
-            x = torch.hstack([x,y_obs])
-            x = x[:, [0,2]]
+            g = diffusion_coeff(batch_time_step)[:, None]
+            score = score_model(x, y_obs, batch_time_step[:,None])
+
+            mean_x = x + g**2 * score * step_size
+            x = mean_x + torch.sqrt(step_size) * g * torch.randn_like(x) 
             
-    # Do not include any noise in the last sampling step.
     return mean_x
 
 def CDE_pc_sampler_2D(score_model, 
-               marginal_prob_std,
-               diffusion_coeff,
-               y_obs,
-               batch_size=2048, 
-               num_steps=1000, 
-               snr=signal_to_noise_ratio,               
-               eps=1e-3):
+                           marginal_prob_std,
+                           diffusion_coeff, 
+                           y_obs,
+                           batch_size=10000, 
+                           num_steps=1000, 
+                           eps=1e-3, snr=0.16):
 
     t = torch.ones(batch_size)
-    init_x = torch.randn(batch_size, 1) * marginal_prob_std(t)[:, None]
-    time_steps = np.linspace(1., eps, num_steps)
+    x = torch.randn(batch_size, 1) * marginal_prob_std(t)[:, None]
+    time_steps = torch.linspace(1., eps, num_steps)
     step_size = time_steps[0] - time_steps[1]
-    x = init_x
     y_obs = y_obs.repeat(batch_size)
     y_obs = y_obs.reshape(batch_size,1)
-    x = torch.hstack([init_x, y_obs])
+
     with torch.no_grad():
-        for time_step in notebook.tqdm(time_steps):      
+        for time_step in notebook.tqdm(time_steps): 
+
             batch_time_step = torch.ones(batch_size) * time_step
-            batch_time_step_ = torch.reshape(batch_time_step, (x.shape[0], 1))
-            x_with_t = torch.hstack([x, batch_time_step_])
-            # Corrector step (Langevin MCMC)
-            grad = score_model(x_with_t)
+            g = diffusion_coeff(batch_time_step)[:, None]
+            
+            grad = score_model(x, y_obs, batch_time_step[:,None])
             grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
             noise_norm = np.sqrt(np.prod(x.shape[1:]))
             langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
-            x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)      
+            x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)    
             
-            x = torch.hstack([x,y_obs])
-            x = x[:, [0,2]]
-            x_with_t = torch.hstack([x, batch_time_step_])
-            # Predictor step (Euler-Maruyama)
-            g = diffusion_coeff(batch_time_step)
-            x_mean = x + (g**2)[:, None] * score_model(x_with_t) * step_size
-            x = x_mean + torch.sqrt(g**2 * step_size)[:, None] * torch.randn_like(x)
+            score = score_model(x, y_obs, batch_time_step[:,None])
+            mean_x = x + g**2 * score * step_size
+            x = mean_x + torch.sqrt(step_size) * g * torch.randn_like(x) 
             
-            #conditional info
-            x = torch.hstack([x,y_obs])
-            x = x[:, [0,2]]
-
-    # The last step does not include any noise
-    return x_mean
+    return mean_x
 
 sigma_min=0.01
 sigma_max_2D=8

@@ -124,6 +124,45 @@ class cde_ScoreNet_BOD(nn.Module):
 
         out = out / norm
         return out
+
+class cde_ScoreNet_2D(nn.Module):
+    
+    def __init__(self, marginal_prob_std):
+        super().__init__()
+        self.marginal_prob_std = marginal_prob_std
+        
+        self.net = MLP(3 * 32,
+                       layer_widths=[128,128] + [1],
+                       activate_final = False,
+                       activation_fn=torch.nn.LeakyReLU())
+
+        self.t_encoder = MLP(16,
+                             layer_widths=[16] + [32],
+                             activate_final = True,
+                             activation_fn=torch.nn.LeakyReLU())
+
+        self.xy_encoder = MLP(2,
+                              layer_widths=[32] + [64],
+                              activate_final = True,
+                              activation_fn=torch.nn.LeakyReLU())
+        
+    def forward(self, x, y, t):
+
+        xy = torch.hstack([x, y])
+        
+        t_emb = get_timestep_embedding(t, 16, 10000)
+        t_emb = self.t_encoder(t_emb)
+        xy_emb = self.xy_encoder(xy)
+
+        
+        h = torch.cat([xy_emb, t_emb], -1)
+
+        out = self.net(h) 
+
+        out = out / self.marginal_prob_std(t)
+
+        return out
+   
     
 def get_timestep_embedding(timesteps, embedding_dim=128, max_period=10000):
     """
