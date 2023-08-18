@@ -124,7 +124,7 @@ class cde_ScoreNet_BOD(nn.Module):
 
         out = out / norm
         return out
-
+    
 class cde_ScoreNet_2D(nn.Module):
     
     def __init__(self, marginal_prob_std):
