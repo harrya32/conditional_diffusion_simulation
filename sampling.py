@@ -194,6 +194,7 @@ def CDE_pc_sampler_2D(score_model,
 sigma_min=0.01
 sigma_max_2D=8
 sigma_max_BOD=13
+sigma_max_MNIST=25
 
 def sde_VE(x, t, sigma_min, sigma_max):
     sigma = sigma_min * (sigma_max / sigma_min) ** t
@@ -662,12 +663,6 @@ def cde_get_next_x(x, y_obs, batch_size, score_model, diffusion_coeff, time_step
     return x
 
 
-def log_normal_density(sample, mean, sd):
-    sample = sample[0]
-    sd = sd[0]
-    cov = sd * torch.eye(sample.shape[0])
-    return MultivariateNormal(loc=mean, covariance_matrix=cov).log_prob(sample)
-
 def log_imp_weights(sample, mean, sd):
     log_w = -(1./2)*(sample-mean)**2/(sd**2)
     log_w = torch.sum(log_w, axis=[1])
@@ -684,8 +679,7 @@ def SMCDiff_Euler_Maruyama_sampler_BOD(score_model, marginal_prob_std, diffusion
     xs = []
     init_x = torch.randn(k, 7) * marginal_prob_std(t)[:, None]
     xs.append(init_x)
-    #diff = get_diffused_BOD(y_obs, num_steps, diffusion_coeff)
-    #diffused_y = [i.repeat(k).reshape(k,5) for i in diff]
+
     if diffused_y is None:
         diffused_y = [i.repeat(k).reshape(k,5) for i in get_diffused_BOD(y_obs, num_steps, sde_VE, sigma_min, sigma_max)]
     else:
@@ -875,3 +869,320 @@ def inverse_cdf(su, W):
             s += W[j]
         A[n] = j
     return A
+
+
+
+
+#################
+#################
+#################
+
+
+def Euler_Maruyama_sampler_MNIST(score_model, marginal_prob_std, diffusion_coeff, 
+                                 batch_size=64, num_steps=1000, device='cpu', eps=1e-3):
+    
+    t = torch.ones(batch_size, device=device)
+    init_x = torch.randn(batch_size, 1, 28, 28, device=device) * marginal_prob_std(t)[:, None, None, None]
+    time_steps = torch.linspace(1., eps, num_steps, device=device)
+    step_size = time_steps[0] - time_steps[1]
+    x = init_x
+    with torch.no_grad():
+        for time_step in notebook.tqdm(time_steps):
+            batch_time_step = torch.ones(batch_size, device=device) * time_step
+            g = diffusion_coeff(batch_time_step)
+            mean_x = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+            x = mean_x + torch.sqrt(step_size) * g[:, None, None, None] * torch.randn_like(x)
+
+    return mean_x
+
+
+def pc_sampler_MNIST(score_model, marginal_prob_std, diffusion_coeff, 
+                     batch_size=64, num_steps=1000, snr=0.16, device='cpu', eps=1e-3):
+
+    t = torch.ones(batch_size, device=device)
+    init_x = torch.randn(batch_size, 1, 28, 28, device=device) * marginal_prob_std(t)[:, None, None, None]
+    time_steps = np.linspace(1., eps, num_steps)
+    step_size = time_steps[0] - time_steps[1]
+    x = init_x
+    with torch.no_grad():
+        for time_step in notebook.tqdm(time_steps):
+            batch_time_step = torch.ones(batch_size, device=device) * time_step
+            
+            # Corrector step (Langevin MCMC)
+            grad = score_model(x, batch_time_step)
+            grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
+            noise_norm = np.sqrt(np.prod(x.shape[1:]))
+            langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
+            x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)
+
+            # Predictor step (Euler-Maruyama)
+            g = diffusion_coeff(batch_time_step)
+            x_mean = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+            x = x_mean + torch.sqrt(g**2 * step_size)[:, None, None, None] * torch.randn_like(x)
+            
+    return x_mean
+
+
+def get_diffused_MNIST(obs, n, sde, sigma_min=0.01, sigma_max=25):
+    data = obs.clone().detach()
+    t = 1e-5
+    dt = 1/n
+    diffused = [data.clone().detach()]
+    for i in range(n):
+        drift, diffusion = sde(data, t, sigma_min, sigma_max)
+        data += drift * dt
+        data += diffusion * torch.randn(28,28, device=device) * np.sqrt(dt)
+        diffused.append(data.clone().detach())
+        t += dt
+        
+    return torch.stack(diffused)
+
+def insert_condition(x, y_obs):
+    inserted = x.clone().detach()
+
+    for i in inserted:
+        i[0][:, :14] = y_obs
+
+    return inserted
+
+device='cpu'
+def CDiffE_Euler_Maruyama_sampler_MNIST(score_model, marginal_prob_std, diffusion_coeff, y_obs, batch_size=16, num_steps=1000,
+                                        eps=1e-3, sigma_min=sigma_min, sigma_max=sigma_max_MNIST, diffused_y=None):
+
+    t = torch.ones(batch_size, device=device)
+    x = torch.randn(batch_size, 1, 28, 28, device=device) * marginal_prob_std(1)
+    time_steps = torch.linspace(1., eps, num_steps)
+    step_size = time_steps[0] - time_steps[1]
+
+    if diffused_y is None:
+        diffused_y = get_diffused_MNIST(y_obs, 1000, sde_VE, sigma_min, sigma_max)
+        diffused_y = [i[:,:14] for i in diffused_y]
+    
+    else:
+        diffused_y = [i[:,:14] for i in diffused_y]
+
+    with torch.no_grad():
+        for idx, time_step in enumerate(notebook.tqdm(time_steps)):
+            idx = num_steps - idx - 1
+            y_obs_t = diffused_y[idx]
+            x = insert_condition(x, y_obs_t)
+            
+            batch_time_step = torch.ones(batch_size, device=device) * time_step
+
+            g = diffusion_coeff(batch_time_step)
+            mean_x = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+            x = mean_x + torch.sqrt(step_size) * g[:, None, None, None] * torch.randn_like(x)
+
+    return mean_x
+
+def CDiffE_pc_sampler_MNIST(score_model, marginal_prob_std, diffusion_coeff, y_obs, batch_size=16, num_steps=1000, 
+                           eps=1e-3, sigma_min=sigma_min, sigma_max=sigma_max_MNIST, diffused_y=None, snr=0.16):
+
+    t = torch.ones(batch_size, device=device)
+    x = torch.randn(batch_size, 1, 28, 28, device=device) * marginal_prob_std(1)
+    time_steps = torch.linspace(1., eps, num_steps)
+    step_size = time_steps[0] - time_steps[1]
+
+    if diffused_y is None:
+        diffused_y = get_diffused_MNIST(y_obs, 1000, sde_VE, sigma_min, sigma_max)
+        diffused_y = [i[:,:14] for i in diffused_y]
+    
+    else:
+        diffused_y = [i[:,:14] for i in diffused_y]
+
+    with torch.no_grad():
+        for idx, time_step in enumerate(notebook.tqdm(time_steps)):
+            idx = num_steps - idx - 1
+            y_obs_t = diffused_y[idx]
+            x = insert_condition(x, y_obs_t)
+            batch_time_step = torch.ones(batch_size) * time_step
+            
+            # Corrector step (Langevin MCMC)
+            grad = score_model(x, batch_time_step)
+            grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
+            noise_norm = np.sqrt(np.prod(x.shape[1:]))
+            langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
+            x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)
+
+            x = insert_condition(x, y_obs_t)
+            # Predictor step
+            g = diffusion_coeff(batch_time_step)
+            mean_x = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+            x = mean_x + torch.sqrt(step_size) * g[:, None, None, None] * torch.randn_like(x)
+
+    return mean_x
+
+def get_y(x, k):
+    y = torch.zeros(k,1,28,14)
+    for i in range(k):
+        y[i][0] = x[i][0][:, :14]
+        
+    return y    
+
+def log_imp_weights_MNIST(sample, mean, sd):
+    log_w = -(1./2)*(sample-mean)**2/(sd**2)
+    log_w = torch.sum(log_w, axis=[1,2,3])
+    log_w -= torch.logsumexp(log_w, 0)
+    return log_w
+
+def SMCDiff_Euler_Maruyama_sampler_MNIST(score_model, marginal_prob_std, diffusion_coeff, y_obs, k, num_steps=1000, 
+                                       eps=1e-3, sigma_min=sigma_min, sigma_max=sigma_max_MNIST, diffused_y=None):
+
+    t = torch.ones(k, device=device)
+    x = torch.randn(k, 1, 28, 28, device=device) * marginal_prob_std(1)
+    time_steps = torch.linspace(1., eps, num_steps)
+    step_size = time_steps[0] - time_steps[1]
+    weights = np.ones(k)/k
+    
+    if diffused_y is None:
+        diffused_y = get_diffused_MNIST(y_obs, 1000, sde_VE, sigma_min, sigma_max)
+        diffused_y = [i[:,:14] for i in diffused_y]
+    
+    else:
+        diffused_y = [i[:,:14] for i in diffused_y]
+
+    with torch.no_grad():
+        for idx, time_step in enumerate(notebook.tqdm(time_steps)):
+
+            idx = num_steps - idx - 1
+            y_obs_t = diffused_y[idx]
+            x = insert_condition(x, y_obs_t)
+            batch_time_step = torch.ones(k, device=device) * time_step
+            g = diffusion_coeff(batch_time_step)
+            
+            if (idx - 1) >= 0:
+                mean_x = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+                sd = torch.sqrt(step_size) * g[:, None, None, None]
+
+                y_update_mean = get_y(mean_x, k)
+                y_update_actual = diffused_y[idx-1]
+
+
+                log_w = log_imp_weights_MNIST(y_update_actual, y_update_mean, sd)
+                weights *= torch.exp(log_w).cpu().detach().numpy()
+                weights /= sum(weights) 
+                
+                departure_from_uniform = np.sum(abs(k*weights-1))
+                if (departure_from_uniform > 0.75*k) and (idx>50):
+                    #print(idx, "resampling, departure=%0.02f"%departure_from_uniform)
+                    resample_index = systematic(weights, k)
+                    x = x[resample_index]
+                    weights = np.ones_like(weights)/k
+            
+            mean_x = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+            x = mean_x + torch.sqrt(step_size) * g[:, None, None, None] * torch.randn_like(x)
+            
+    return mean_x
+
+def SMCDiff_pc_sampler_MNIST(score_model, marginal_prob_std, diffusion_coeff, y_obs, k, num_steps=1000, 
+                                       eps=1e-3, sigma_min=sigma_min, sigma_max=sigma_max_MNIST, diffused_y=None, snr=0.16):
+
+    t = torch.ones(k, device=device)
+    x = torch.randn(k, 1, 28, 28, device=device) * marginal_prob_std(1)
+    time_steps = torch.linspace(1., eps, num_steps)
+    step_size = time_steps[0] - time_steps[1]
+    weights = np.ones(k)/k
+    
+    if diffused_y is None:
+        diffused_y = get_diffused_MNIST(y_obs, 1000, sde_VE, sigma_min, sigma_max)
+        diffused_y = [i[:,:14] for i in diffused_y]
+    
+    else:
+        diffused_y = [i[:,:14] for i in diffused_y]
+
+    with torch.no_grad():
+        for idx, time_step in enumerate(notebook.tqdm(time_steps)):
+
+            idx = num_steps - idx - 1
+            y_obs_t = diffused_y[idx]
+            x = insert_condition(x, y_obs_t)
+            batch_time_step = torch.ones(k, device=device) * time_step
+            g = diffusion_coeff(batch_time_step)
+            
+            # SMC step
+            if (idx - 1) >= 0:
+                mean_x = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+                sd = torch.sqrt(step_size) * g[:, None, None, None]
+
+                y_update_mean = get_y(mean_x, k)
+                y_update_actual = diffused_y[idx-1]
+
+
+                log_w = log_imp_weights_MNIST(y_update_actual, y_update_mean, sd)
+                weights *= torch.exp(log_w).cpu().detach().numpy()
+                weights /= sum(weights) 
+                
+                departure_from_uniform = np.sum(abs(k*weights-1))
+                if (departure_from_uniform > 0.75*k) and (idx>50):
+                    #print(idx, "resampling, departure=%0.02f"%departure_from_uniform)
+                    resample_index = systematic(weights, k)
+                    x = x[resample_index]
+                    weights = np.ones_like(weights)/k
+            
+            # Corrector step (Langevin MCMC)
+            grad = score_model(x, batch_time_step)
+            grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
+            noise_norm = np.sqrt(np.prod(x.shape[1:]))
+            langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
+            x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)
+            
+            # Predictor step
+            x = insert_condition(x, y_obs_t)
+            mean_x = x + (g**2)[:, None, None, None] * score_model(x, batch_time_step) * step_size
+            x = mean_x + torch.sqrt(step_size) * g[:, None, None, None] * torch.randn_like(x)
+            
+    return mean_x
+
+def CDE_pc_sampler_MNIST(score_model, marginal_prob_std, diffusion_coeff, y_obs, batch_size=16, num_steps=1000, 
+                           eps=1e-3, snr=0.16):
+
+    t = torch.ones(batch_size, device=device)
+    x = torch.randn(batch_size, 1, 28, 28, device=device) * marginal_prob_std(1)
+    time_steps = torch.linspace(1., eps, num_steps)
+    step_size = time_steps[0] - time_steps[1]
+    y_obs = y_obs[:, :14]
+    
+    with torch.no_grad():
+        for time_step in notebook.tqdm(time_steps):
+
+            x = insert_condition(x, y_obs)
+            batch_time_step = torch.ones(batch_size, device=device) * time_step
+            
+            # Corrector step (Langevin MCMC)
+            grad = score_model(x, batch_time_step)
+            grad_norm = torch.norm(grad.reshape(grad.shape[0], -1), dim=-1).mean()
+            noise_norm = np.sqrt(np.prod(x.shape[1:]))
+            langevin_step_size = 2 * (snr * noise_norm / grad_norm)**2
+            x = x + langevin_step_size * grad + torch.sqrt(2 * langevin_step_size) * torch.randn_like(x)
+            
+            x = insert_condition(x, y_obs)
+            
+            # Predictor step
+            g = diffusion_coeff(batch_time_step)
+            score = score_model(x, batch_time_step)
+            mean_x = x + (g**2)[:, None, None, None] * score * step_size
+            x = mean_x + torch.sqrt(step_size) * g[:, None, None, None] * torch.randn_like(x)
+
+    return mean_x
+
+def CDE_Euler_Maruyama_sampler_MNIST(score_model, marginal_prob_std, diffusion_coeff, y_obs, 
+                                     batch_size=16, num_steps=1000, eps=1e-3):
+
+    t = torch.ones(batch_size, device=device)
+    x = torch.randn(batch_size, 1, 28, 28, device=device) * marginal_prob_std(1)
+    time_steps = torch.linspace(1., eps, num_steps)
+    step_size = time_steps[0] - time_steps[1]
+    y_obs = y_obs[:, :14]
+    
+    with torch.no_grad():
+        for time_step in notebook.tqdm(time_steps):
+
+            x = insert_condition(x, y_obs)
+
+            batch_time_step = torch.ones(batch_size, device=device) * time_step
+            g = diffusion_coeff(batch_time_step)
+            score = score_model(x, batch_time_step)
+            mean_x = x + (g**2)[:, None, None, None] * score * step_size
+            x = mean_x + torch.sqrt(step_size) * g[:, None, None, None] * torch.randn_like(x)
+
+    return mean_x

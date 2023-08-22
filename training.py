@@ -21,9 +21,6 @@ def loss_fn(model, x, marginal_prob_std, eps=1e-5):
     score = model(x_with_t)
     loss = torch.mean(torch.sum((score * std[:, None] + z)**2, dim=0))
     
-    #losses = torch.square(score * std[:, None] + z)
-    #losses = torch.mean(losses.reshape(losses.shape[0], -1), dim=-1)
-    #loss = torch.mean(losses)
     return loss
 
 def CDE_loss_fn_BOD(model, x, marginal_prob_std, eps=1e-5):
@@ -42,9 +39,6 @@ def CDE_loss_fn_BOD(model, x, marginal_prob_std, eps=1e-5):
     score = model(x_with_t)
     loss = torch.mean(torch.sum((score * std[:, None] + z)**2, dim=0))
     
-    #losses = torch.square(score * std[:, None] + z)
-    #losses = torch.mean(losses.reshape(losses.shape[0], -1), dim=-1)
-    #loss = torch.mean(losses)
     return loss
 
 def CDE_loss_fn_2D(model, x, marginal_prob_std, eps=1e-5):
@@ -65,6 +59,14 @@ def CDE_loss_fn_2D(model, x, marginal_prob_std, eps=1e-5):
     loss = torch.mean(torch.sum((score * std[:, None] + z)**2, dim=0))
     return loss
 
+def loss_fn_MNIST(model, x, marginal_prob_std, eps=1e-5):
+    random_t = torch.rand(x.shape[0], device=x.device) * (1. - eps) + eps  
+    z = torch.randn_like(x)
+    std = marginal_prob_std(random_t)
+    perturbed_x = x + z * std[:, None, None, None]
+    score = model(perturbed_x, random_t)
+    loss = torch.mean(torch.sum((score * std[:, None, None, None] + z)**2, dim=(1,2,3)))
+    return loss
 
 def train_model(score_model, data, loss_fn, marginal_prob_std_fn, file, epochs = 100, batch_size = 32, lr = 1e-4):
     
