@@ -708,7 +708,7 @@ def SMCDiff_Euler_Maruyama_sampler_BOD(score_model, marginal_prob_std, diffusion
                 
                 departure_from_uniform = np.sum(abs(k*weights-1))
                 if departure_from_uniform > 0.5*k:
-                    print(idx, "resampling, departure=%0.02f"%departure_from_uniform)
+                    #print(idx, "resampling, departure=%0.02f"%departure_from_uniform)
                     resample_index = systematic(weights, k)
                     x = x[resample_index]
                     weights = np.ones_like(weights)/k
@@ -769,7 +769,7 @@ def SMCDiff_pc_sampler_BOD(score_model, marginal_prob_std, diffusion_coeff, y_ob
                 
                 departure_from_uniform = np.sum(abs(k*weights-1))
                 if departure_from_uniform > 0.5*k:
-                    print(idx, "resampling, departure=%0.02f"%departure_from_uniform)
+                    #print(idx, "resampling, departure=%0.02f"%departure_from_uniform)
                     resample_index = systematic(weights, k)
                     x = x[resample_index]
                     weights = np.ones_like(weights)/k
