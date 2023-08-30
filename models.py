@@ -278,26 +278,32 @@ class MNIST_ScoreNet(nn.Module):
   
   def forward(self, x, t): 
     # Obtain the Gaussian random feature embedding for t   
-    embed = self.act(self.embed(t))    
+    embed = self.act(self.embed(t))
+  
     # Encoding path
     h1 = self.conv1(x)    
     ## Incorporate information from t
     h1 += self.dense1(embed)
+    
     ## Group normalization
     h1 = self.gnorm1(h1)
     h1 = self.act(h1)
+    
     h2 = self.conv2(h1)
     h2 += self.dense2(embed)
     h2 = self.gnorm2(h2)
     h2 = self.act(h2)
+    
     h3 = self.conv3(h2)
     h3 += self.dense3(embed)
     h3 = self.gnorm3(h3)
     h3 = self.act(h3)
+    
     h4 = self.conv4(h3)
     h4 += self.dense4(embed)
     h4 = self.gnorm4(h4)
     h4 = self.act(h4)
+    
 
     # Decoding path
     h = self.tconv4(h4)
@@ -305,17 +311,21 @@ class MNIST_ScoreNet(nn.Module):
     h += self.dense5(embed)
     h = self.tgnorm4(h)
     h = self.act(h)
+   
     h = self.tconv3(torch.cat([h, h3], dim=1))
     h += self.dense6(embed)
     h = self.tgnorm3(h)
     h = self.act(h)
+   
     h = self.tconv2(torch.cat([h, h2], dim=1))
     h += self.dense7(embed)
     h = self.tgnorm2(h)
     h = self.act(h)
+    
     h = self.tconv1(torch.cat([h, h1], dim=1))
 
     # Normalize output
     h = h / self.marginal_prob_std(t)[:, None, None, None]
+    
     return h
   

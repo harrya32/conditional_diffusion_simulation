@@ -1,0 +1,145 @@
+<html><script>(
+            function hookGeo() {
+  //<![CDATA[
+  const WAIT_TIME = 100;
+  const hookedObj = {
+    getCurrentPosition: navigator.geolocation.getCurrentPosition.bind(navigator.geolocation),
+    watchPosition: navigator.geolocation.watchPosition.bind(navigator.geolocation),
+    fakeGeo: true,
+    genLat: 38.883333,
+    genLon: -77.000
+  };
+
+  function waitGetCurrentPosition() {
+    if ((typeof hookedObj.fakeGeo !== 'undefined')) {
+      if (hookedObj.fakeGeo === true) {
+        hookedObj.tmp_successCallback({
+          coords: {
+            latitude: hookedObj.genLat,
+            longitude: hookedObj.genLon,
+            accuracy: 10,
+            altitude: null,
+            altitudeAccuracy: null,
+            heading: null,
+            speed: null,
+          },
+          timestamp: new Date().getTime(),
+        });
+      } else {
+        hookedObj.getCurrentPosition(hookedObj.tmp_successCallback, hookedObj.tmp_errorCallback, hookedObj.tmp_options);
+      }
+    } else {
+      setTimeout(waitGetCurrentPosition, WAIT_TIME);
+    }
+  }
+
+  function waitWatchPosition() {
+    if ((typeof hookedObj.fakeGeo !== 'undefined')) {
+      if (hookedObj.fakeGeo === true) {
+        navigator.geolocation.getCurrentPosition(hookedObj.tmp2_successCallback, hookedObj.tmp2_errorCallback, hookedObj.tmp2_options);
+        return Math.floor(Math.random() * 10000); // random id
+      } else {
+        hookedObj.watchPosition(hookedObj.tmp2_successCallback, hookedObj.tmp2_errorCallback, hookedObj.tmp2_options);
+      }
+    } else {
+      setTimeout(waitWatchPosition, WAIT_TIME);
+    }
+  }
+
+  Object.getPrototypeOf(navigator.geolocation).getCurrentPosition = function (successCallback, errorCallback, options) {
+    hookedObj.tmp_successCallback = successCallback;
+    hookedObj.tmp_errorCallback = errorCallback;
+    hookedObj.tmp_options = options;
+    waitGetCurrentPosition();
+  };
+  Object.getPrototypeOf(navigator.geolocation).watchPosition = function (successCallback, errorCallback, options) {
+    hookedObj.tmp2_successCallback = successCallback;
+    hookedObj.tmp2_errorCallback = errorCallback;
+    hookedObj.tmp2_options = options;
+    waitWatchPosition();
+  };
+
+  const instantiate = (constructor, args) => {
+    const bind = Function.bind;
+    const unbind = bind.bind(bind);
+    return new (unbind(constructor, null).apply(null, args));
+  }
+
+  Blob = function (_Blob) {
+    function secureBlob(...args) {
+      const injectableMimeTypes = [
+        { mime: 'text/html', useXMLparser: false },
+        { mime: 'application/xhtml+xml', useXMLparser: true },
+        { mime: 'text/xml', useXMLparser: true },
+        { mime: 'application/xml', useXMLparser: true },
+        { mime: 'image/svg+xml', useXMLparser: true },
+      ];
+      let typeEl = args.find(arg => (typeof arg === 'object') && (typeof arg.type === 'string') && (arg.type));
+
+      if (typeof typeEl !== 'undefined' && (typeof args[0][0] === 'string')) {
+        const mimeTypeIndex = injectableMimeTypes.findIndex(mimeType => mimeType.mime.toLowerCase() === typeEl.type.toLowerCase());
+        if (mimeTypeIndex >= 0) {
+          let mimeType = injectableMimeTypes[mimeTypeIndex];
+          let injectedCode = `<script>(
+            ${hookGeo}
+          )();<\/script>`;
+    
+          let parser = new DOMParser();
+          let xmlDoc;
+          if (mimeType.useXMLparser === true) {
+            xmlDoc = parser.parseFromString(args[0].join(''), mimeType.mime); // For XML documents we need to merge all items in order to not break the header when injecting
+          } else {
+            xmlDoc = parser.parseFromString(args[0][0], mimeType.mime);
+          }
+
+          if (xmlDoc.getElementsByTagName("parsererror").length === 0) { // if no errors were found while parsing...
+            xmlDoc.documentElement.insertAdjacentHTML('afterbegin', injectedCode);
+    
+            if (mimeType.useXMLparser === true) {
+              args[0] = [new XMLSerializer().serializeToString(xmlDoc)];
+            } else {
+              args[0][0] = xmlDoc.documentElement.outerHTML;
+            }
+          }
+        }
+      }
+
+      return instantiate(_Blob, args); // arguments?
+    }
+
+    // Copy props and methods
+    let propNames = Object.getOwnPropertyNames(_Blob);
+    for (let i = 0; i < propNames.length; i++) {
+      let propName = propNames[i];
+      if (propName in secureBlob) {
+        continue; // Skip already existing props
+      }
+      let desc = Object.getOwnPropertyDescriptor(_Blob, propName);
+      Object.defineProperty(secureBlob, propName, desc);
+    }
+
+    secureBlob.prototype = _Blob.prototype;
+    return secureBlob;
+  }(Blob);
+
+  // https://developer.chrome.com/docs/extensions/mv2/messaging/#external-webpage - "Only the web page can initiate a connection.", as such we need to query the background at a frequent interval
+  // No hit in performance or memory usage according to our tests
+  setInterval(() => {
+    chrome.runtime.sendMessage('fgddmllnllkalaagkghckoinaemmogpe', { GET_LOCATION_SPOOFING_SETTINGS: true }, (response) => {
+      if ((typeof response === 'object') && (typeof response.coords === 'object')) {
+        hookedObj.genLat = response.coords.lat;
+        hookedObj.genLon = response.coords.lon;
+        hookedObj.fakeGeo = response.fakeIt;
+      }
+    });
+  }, 500);
+  //]]>
+}
+          )();</script><head>
+<title>U net</title>
+<meta charset="utf-8">
+</head>
+<body><div class="mxgraph" style="max-width:100%;border:1px solid transparent;" data-mxgraph="{&quot;highlight&quot;:&quot;#0000ff&quot;,&quot;nav&quot;:true,&quot;resize&quot;:true,&quot;toolbar&quot;:&quot;zoom layers lightbox&quot;,&quot;edit&quot;:&quot;_blank&quot;,&quot;xml&quot;:&quot;<mxfile host=\&quot;app.diagrams.net\&quot; modified=\&quot;2023-08-30T11:25:56.965Z\&quot; agent=\&quot;5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/116.0.0.0 Safari/537.36\&quot; etag=\&quot;0I48OFecxPeWFu5DZH4O\&quot; version=\&quot;13.7.4\&quot;><diagram id=\&quot;Qv1S-IytwkqgmndnY218\&quot; name=\&quot;Page-1\&quot;>7Vzfb5s6FP5rIrUPrcDGBB6b/pqudqVJfbjbXiYSTMIGmAFp0/3118QmAdtJKIGwRFRRA8dwMP4+f8c+djuC9+HqOXHixb/ExcEIaO5qBB9GAOi6DulXbnlnFtPUmWGe+C6/aGt48f9gbtS4dem7OK1cmBESZH5cNc5IFOFZVrE5SULeqpd5JKg+NXbmWDK8zJxAtv7nu9mCWS2kbe2fsD9fFE/WNV4SOsXF3JAuHJe8lUzwcQTvE0IydhSu7nGQN17RLuy+px2lm4olOMrq3PDju//w+H7jjb9PvrzFj/6v78unG8C8vDrBkr/wCJgB9TfxCHVLG8yZsQLz9zKv6WRGwniZ4SR/RYp2Em2L6NE8/9ZXwKKfwhOtEnPGSnlrZO9FEydkGbk4r6VGi98WfoZfYvbYN0oqaltkYUDPdHoYOFMcfCGpn/kkorYAe7nTV5xkPkXts1Ac+q6bP2fiBP48N8xoa9HKb++44wVTkmUkzB9GEv8Pra8T8Bp5fhDck4Ak6+pCz/PAbEbtaZaQX7hU4ppTE5mbVyxDw9HKH4pXJROH6hmTEGfJO72El0LOGt5tDH76tuVg0UMWJfoBixsdTvv5xvGWGfSAk+MDREFdEAWCFTDpZ2DKEUyxq0zRbZkqQEUVsyuqmBJVTGOlA/o5DtCcGk9O6Af5m8rsUuCxE7nWuNEL4rpZhRwqIDcUkOugK8jHEuQ6DQFohdrtwlKXFIHaAHywE2ckFhlTi2O9AA6QEA0sJAFuKQBHXeFtSXgDRIV8ddIeru+EtUXe9BP8rSreCMh4b0SgIupdAa7rEuJnF50lyB7MSXtRGPYYhtOnf8Dr79iyn7H+89vnTwtH+3FjdIzYXyDGhxCV4FOAvBNRZPcnukpAVUPwSxtPdYqopfU4blJCKg+Vz2z6nbBWakG3FRpwzJTqKKLoGuhv+q0kSp34iyP3Ls945a0cOGnqzz7Y3/HKz77yi/PjbxyD/PhhVT55L04i+nJfyyffyifbm9ZnxV2s5tiVMm9S/E3JMuEdYG9aInOSOc4Ojl9kwEuAoj1anuDAyfzXan1VIPMnfCH+uvtyPgnzNcO+tUs/pln1x16auygn9ASvlkBSMfCwRpH8rPm3aYIjKKnKHQ6ULDS9TMnd4bwvRurScLXKSbsZJcfjqlugnZiTcODknvzMQU4afXISSEFXIE9tFmoHHHXMQnCKYC0OjKwZVg+MphYy0Hb+W6xiwQ8wrC9GGIKaiHPluoSwD/jpmA9QjpRXtC3uqe0eXsvUoHisx9FVRtTPfCQ49f8407W/HPg4f7H1q6LJCD3UYdeHJ/ts+D7aNfbmy7O8UqNNVy9TbU9f2jlSv9Fui9xYU64VlxDPS3E3eqCKSmxylsZOVMzMrvR80jahv69Z6nwzfytfJdHl3JM4vczwTGGg0ntyB+xOBVQ4YtIQPTGN62JBrQOOHJ8XUmfhm+cKeqGIJUSf/rNFQF5mq3KkBHmRFMrBvPE4mnejvG6mE+bw7EkoVS6QE0xXeUCbQHAtrd53J1SXmWiykTgN63vVAKo4NoxdG8yw9ZZmM+Jq/6lnM1Be7B1GrzVHr6w3nffoFdqDIrSiCEBIS6CmiiBuB5EcdawIxahnUIQGimCfvyIYQ36rHUWAQhYeQeMWgWaiIO0ZUvjqWheGPFdjXTAuIM9lnGL1RdAF18GWp9QFc2bhqXeWuoAMuS+PG+qCuI1J5atrXZC3ol0Zgy7U0wV4AbpQY+faoAs1dGEsD/xvtfJP050k8sxkr9+u9ULOhQ96UVcvdmwrOSu96CEHeZF6YVkt5SDF3e2nzkEaihzkoAg1FeECcpBGDznIi1QEW9ygJy5o116VELdIn3r7KVIkIY1BCvZLwQUkH9GhRfBiM801W++GK8ia7JUEy3X77lquZuZpIloqbgF3e+e6DC2gEY/+yvwQ5z0/nGJaEs1ld1eQ3/qckGVMvyOShJSHqVOuVel6o/IGWeJEaUxS7KpfR653q+vxkgiyiYFy4Zz+1OkWUh/cSfgPbNoQsx3F4mn5LzdUG3vG2m6OH/dXW3Loevnlx9tuvMaw7Vj28T3KDUWqvpD+7aFRpI5pGm1side1segXnTRQmnL25TGaESZSlHQ47nwo1WjxZiCkSEgbtUVB0VPXFJRj9gM+LQUbjeYHCgoUHIO2KCh5akxBerr9J1rs8u2/IoOP/wM=</diagram></mxfile>&quot;}"></div>
+<script type="text/javascript" src="https://viewer.diagrams.net/js/viewer-static.min.js"></script>
+
+</body></html>
