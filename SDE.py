@@ -4,29 +4,13 @@ import functools
 
 
 def marginal_prob_std(t, sigma_min, sigma_max):
-    """Compute the standard deviation of $p_{0t}(x(t) | x(0))$.
-    
-    Args:    
-    t: A vector of time steps.
-    sigma: The $\sigma$ in our SDE.  
-
-    Returns:
-    The standard deviation.
-    """    
+  
     t = torch.tensor(t)
     std = sigma_min * (sigma_max / sigma_min) ** t
     return std
 
 def diffusion_coeff(t, sigma_min, sigma_max):
-    """Compute the diffusion coefficient of our SDE.
 
-    Args:
-    t: A vector of time steps.
-    sigma: The $\sigma$ in our SDE.
-
-    Returns:
-    The vector of diffusion coefficients.
-    """
     sigma = sigma_min * (sigma_max / sigma_min) ** t
     diffusion = sigma * torch.sqrt(torch.tensor(2 * (np.log(sigma_max) - np.log(sigma_min))))
     return diffusion

@@ -5,8 +5,7 @@ import math
 import torch.nn.functional as F
 
 
-
-#Implimentation from shi et al - best model so far :)
+#Model from shi et al. https://arxiv.org/abs/2202.13460
 class ScoreNet_2D(nn.Module):
     
     def __init__(self, marginal_prob_std):
@@ -208,6 +207,7 @@ class MLP(torch.nn.Module):
         return x
     
 
+   #Unet architecture from example of https://arxiv.org/abs/2011.13456
 
 class GaussianFourierProjection(nn.Module):
     """Gaussian random features for encoding time steps."""  
